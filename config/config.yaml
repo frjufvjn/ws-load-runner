@@ -1,0 +1,19 @@
+connect-info:
+  host: localhost
+  port: 19090
+  uripath: /agent
+
+control-value:
+  numOfVirtualDevices: 10 # [TODO] if define 0 then 'variable-input-sample-list' node list size
+  sendDelayMills: 10000
+  
+payload:
+  str: '{"type":"common","executetime":"2019-11-20 08:43:53.7872659 +0900 KST m=+0.294016801",
+    "deviceid":"SERVER03","deviceip":"10.1.12.52","rmem":88,"smem":76.02713028339298,"cpu":9.525688863372388,
+    "diskinfo":[{"path":"C:","usedPercent":91.42866823451054}]}'
+  variable-part: deviceid
+
+variable-input-sample-list: 
+  - SERVER01
+  - SERVER02
+  - SERVER03
