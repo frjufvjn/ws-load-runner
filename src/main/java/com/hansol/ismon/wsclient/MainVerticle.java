@@ -44,7 +44,7 @@ public class MainVerticle extends AbstractVerticle {
 		retriever.getConfig(this::startup);
 		
 	}
-	
+	 
 	private void startup(final AsyncResult<JsonObject> ar) {
 		if (ar.succeeded()) {
 			
