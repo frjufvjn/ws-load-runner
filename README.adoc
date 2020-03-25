@@ -1,7 +1,6 @@
 = ws-load-runner
 
-![Success](https://img.shields.io/badge/GitHub_Actions-success-success.svg?logo=github&logoColor=white)
-# ws-load-runner
+== ws-load-runner
 websocket server load tester client set
 
 
