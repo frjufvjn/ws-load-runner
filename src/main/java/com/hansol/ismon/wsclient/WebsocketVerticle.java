@@ -1,5 +1,8 @@
 package com.hansol.ismon.wsclient;
 
+import java.io.File;
+import java.io.FileFilter;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -10,14 +13,18 @@ import io.vertx.core.Handler;
 import io.vertx.core.Launcher;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Log4j2LogDelegateFactory;
 import io.vertx.core.shareddata.LocalMap;
 import io.vertx.core.streams.Pump;
+import io.vertx.ext.web.Route;
 import io.vertx.ext.web.Router;
+import io.vertx.ext.web.client.HttpRequest;
 
 public class WebsocketVerticle extends AbstractVerticle {
 
@@ -27,7 +34,7 @@ public class WebsocketVerticle extends AbstractVerticle {
 		Launcher.executeCommand("run", new String[]{WebsocketVerticle.class.getName()});
 	}
 
-	private final Logger logger = LogManager.getLogger(WebsocketVerticle.class);
+	private final static Logger logger = LogManager.getLogger(WebsocketVerticle.class);
 	private LocalMap<String,String> wsSessions = null;
 	private static final int maxSession = 2;
 
@@ -50,9 +57,7 @@ public class WebsocketVerticle extends AbstractVerticle {
 		final HttpServer httpServer = vertx.createHttpServer(httpServerOption);
 
 		final Router router = Router.router(vertx);
-		httpServer.requestHandler(router); // (router::accept); jw version up edit
-
-
+		httpServer.requestHandler(router); 
 
 
 
@@ -61,22 +66,47 @@ public class WebsocketVerticle extends AbstractVerticle {
 		 * 	파일 다운로드 테스트
 		 * 	curl -o dd.tar.gz localhost:18080/download
 		 * */
-		router.get("/download").handler(ctx -> {
-			HttpServerResponse response = ctx.request().response();
-			response.setChunked(true);
-			Pump.pump(ctx.request(), response).start();
 
-			response.putHeader("Content-Type", "application/octet-stream; charset=UTF-8");
-			response.putHeader("Content-Disposition", "attachment; filename=\"sys-mon-kebhana-2020-03-22.tar.gz\"");
-			response.sendFile("C:\\doc\\IS-MON\\하나은행\\서버의소스백업\\sys-mon-kebhana-2020-03-22.tar.gz", ar -> {
-				// response.end();
-				logger.info("file download end : {}", ar.succeeded());
+		Route fileRouter = router.get("/download");
+
+		fileRouter.handler(ctx -> {
+			String path = "C:/doc/IS-MON/하나은행/서버의소스백업";
+			// String filename = "sys-mon-kebhana-2020-03-22.tar.gz";
+
+			HttpServerRequest request = ctx.request();
+
+			/**
+			 * @description 아래의 2개 라인의 소스코드는 "getLastFileModified" 와 같은 async function안에 들어가면 안됨. --> Already Request Read Exception 발생 
+			 * */
+			request.response().setChunked(true);
+			Pump.pump(request, request.response()).start();
+
+			getLastFileModified(path, fileAr -> {
+
+				String filename = fileAr.result();
+
+				if (!"".equals(filename)) {
+					request.response().putHeader("Content-Type", "application/octet-stream; charset=UTF-8");
+					request.response().putHeader("Content-Disposition", "attachment; filename=\""+filename+"\"");
+					request.response().sendFile(path + "/" + filename, ar -> {
+
+						logger.info("file download end : {}", ar.succeeded());
+
+						if (ar.failed()) {
+							logger.error(ar.cause().getMessage());
+							request.response().setStatusCode(500).end();
+						}
+					});
+				} else {
+					request.response().setStatusCode(404).end();
+				}
 			});
-
-			// ctx.request().endHandler(v -> response.end());
 		});
 
 
+		httpServer.exceptionHandler(ex -> {
+			logger.error("ex handler : {}", ex.getMessage() );
+		});
 
 
 
@@ -164,6 +194,7 @@ public class WebsocketVerticle extends AbstractVerticle {
 
 	}
 
+
 	private void authorization(MultiMap map, Handler<AsyncResult<JsonObject>> ar) {
 		logger.info("current wsSessions.size (before regi) : {}", wsSessions.size());
 		if ( wsSessions.size() >= maxSession ) {
@@ -183,5 +214,39 @@ public class WebsocketVerticle extends AbstractVerticle {
 				ar.handle(Future.failedFuture("custom error") );
 			}
 		}
+	}
+
+
+	private void getLastFileModified(String dir, Handler<AsyncResult<String>> ar) {
+		vertx.executeBlocking(blk -> {
+			String filename = getLastFileModified(dir);
+			blk.complete(filename);
+		}, blkRes -> {
+			ar.handle(Future.succeededFuture(blkRes.result().toString()));
+		});
+	}
+
+	private static String getLastFileModified(String dir) {
+		String choise = "";
+		try {
+			File fl = new File(dir);
+			File[] files = fl.listFiles(new FileFilter() {
+				public boolean accept(File file) {
+					return file.isFile();
+				}
+			});
+			long lastMod = Long.MIN_VALUE;
+
+			for (File file : files) {
+				if (file.lastModified() > lastMod) {
+					choise = file.getName();
+					lastMod = file.lastModified();
+				}
+			}
+		} catch (Exception e) {
+			logger.error(e.getMessage());
+		}
+
+		return choise;
 	}
 }
