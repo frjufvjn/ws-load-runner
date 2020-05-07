@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="test">
+
+	<select id="oracle_select_test" parameterType="map" resultType="map">
+		select sysdate from dual
+	</select>
+
+	<sql id="including">
+		SELECT * FROM test1
+	</sql>
+
+	<select id="testsql01" parameterType="map" resultType="map">
+		/*test*/
+		<include refid="including" />
+		where c1 = #{c1}
+	</select>
+	
+	<select id="sql_snmp_device_list" parameterType="map" resultType="map">
+		select * from t_device where device_id = #{device_id}
+	</select>
+	
+	<select id="sql_mysql_live_01" parameterType="map" resultType="map">
+		select count(*) row_cnt from test1556
+	</select>
+	
+	<select id="sql_read_test" parameterType="map">
+		SELECT * FROM cs_usermaster WHERE user_id = #{user_id}
+	</select>
+	<select id="sel_codebook" parameterType="map">
+		SELECT code_type type,  code_name name, etc1, etc2, etc3, etc4, etc5 FROM cs_codebook WHERE code_id='00'
+		  <if test="codetype != null">
+		    AND code_type like concat(#{codetype},'%')
+		  </if>
+		  <if test="codename != null">
+		    AND code_name like concat(#{codename},'%')
+		  </if>  
+	</select>
+	
+	<select id="sel_codebook_detail" parameterType="map">
+		SELECT code_type type, code_id id, code_name name, etc1, etc2, etc3, etc4, etc5, sort_key sortKey, use_yn useYn FROM cs_codebook WHERE code_id!='00'
+		  <if test="codetype != null">
+		    AND code_type = #{codetype}
+		  </if>		    
+	</select>
+	
+	<insert id="sql_insert_update_test" parameterType="map">
+		INSERT INTO cs_codebook (code_type, code_id,code_name,etc1,etc2,etc3,etc4,etc5) 
+		VALUES (#{type}, '00', #{name}, #{etc1}, #{etc2}, #{etc3}, #{etc4}, #{etc5})  
+		ON DUPLICATE KEY UPDATE code_type=#{type}; 
+	</insert>
+	
+	<insert id="sql_insert_test" parameterType="map">
+		insert into tb_test (data1, data2, data3) 
+		values (#{data1}, #{data2}, #{data3})
+	</insert>
+	
+	<update id="sql_update_test" parameterType="map">
+		UPDATE tb_test
+			SET data2 = #{data2}
+		WHERE data1 = #{data1}
+	</update>
+	
+	<delete id="sql_delete_test" parameterType="map">
+		DELETE FROM tb_test WHERE data1 = #{data1}
+	</delete>
+	
+	<insert id="sql_insert_batch_test" parameterType="map">
+		INSERT INTO tb_test (data1, data2)
+		VALUES (#{data1}, #{data2})
+	</insert>
+</mapper>

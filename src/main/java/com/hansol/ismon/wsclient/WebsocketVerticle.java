@@ -2,6 +2,8 @@ package com.hansol.ismon.wsclient;
 
 import java.io.File;
 import java.io.FileFilter;
+import java.util.Arrays;
+import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -37,6 +39,9 @@ public class WebsocketVerticle extends AbstractVerticle {
 	private final static Logger logger = LogManager.getLogger(WebsocketVerticle.class);
 	private LocalMap<String,String> wsSessions = null;
 	private static final int maxSession = 2;
+	
+	private static final List<String> os = Arrays.asList("linux","windows");
+	private static final List<String> type = Arrays.asList("agent","logagent");
 
 	@Override
 	public void start(Promise<Void> startPromise) throws Exception {
@@ -61,19 +66,40 @@ public class WebsocketVerticle extends AbstractVerticle {
 
 
 
+		final String appHome = System.getenv("APP_HOME") != null ? System.getenv("APP_HOME") : System.getProperty("user.dir");
+		final String confPath = String.join(File.separator, appHome, "download");
 		/**
 		 * @description 
 		 * 	파일 다운로드 테스트
 		 * 	curl -o dd.tar.gz localhost:18080/download
 		 * */
 
-		Route fileRouter = router.get("/download");
+		Route fileRouter = router.get("/download/:os/:type");
 
 		fileRouter.handler(ctx -> {
-			String path = "C:/doc/IS-MON/하나은행/서버의소스백업";
+			HttpServerRequest request = ctx.request();
+			
+			final String reqOs = ctx.request().getParam("os");
+			final String reqType = ctx.request().getParam("type");
+			
+			logger.info("reqOs : {}, reqType : {}", reqOs, reqType);
+			
+			if ( !os.contains(reqOs) ) {
+				logger.error("1111");
+				request.response().setStatusCode(404).end();
+				return;
+			}
+			
+			if ( !type.contains(reqType) ) {
+				logger.error("2222");
+				request.response().setStatusCode(404).end();
+				return;
+			}
+			
+			String path = confPath + File.separator + reqOs + "-" + reqType;
 			// String filename = "sys-mon-kebhana-2020-03-22.tar.gz";
 
-			HttpServerRequest request = ctx.request();
+			
 
 			/**
 			 * @description 아래의 2개 라인의 소스코드는 "getLastFileModified" 와 같은 async function안에 들어가면 안됨. --> Already Request Read Exception 발생 
@@ -88,7 +114,7 @@ public class WebsocketVerticle extends AbstractVerticle {
 				if (!"".equals(filename)) {
 					request.response().putHeader("Content-Type", "application/octet-stream; charset=UTF-8");
 					request.response().putHeader("Content-Disposition", "attachment; filename=\""+filename+"\"");
-					request.response().sendFile(path + "/" + filename, ar -> {
+					request.response().sendFile(path + File.separator + filename, ar -> {
 
 						logger.info("file download end : {}", ar.succeeded());
 

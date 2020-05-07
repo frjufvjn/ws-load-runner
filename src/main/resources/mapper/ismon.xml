@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="ismon">
+
+	<!-- [Cache Fix] 수정사항 없음, ALARM_YN은 필터링해서 걸른다. -->
+	<select id="sysmon_get_server_list" parameterType="map" resultType="map">
+		SELECT 
+			DEVICE_ID id, 
+			DEVICE_IP ip, 
+			DEVICE_PORT port, 
+			READ_COMMUNITY community, 
+			AUTH_PASS passwd, 
+			SNMP_VERSION version, 
+			SNMP_YN,
+			ALARM_YN, 
+			DISP_YN dispyn, 
+			PING_YN,
+			IFNULL(SNMP_POLLING_DELAY_CNT, 0) throttle_val, -- MySQL 함수 (오라클일경우 수정)
+			IFNULL(DEVICE_GU1,'') DEVICE_GU1,
+			IFNULL((SELECT CODE_NAME FROM T_CODEBOOK 
+				WHERE CODE_TYPE = 'SYS001' AND CODE_ID = A.DEVICE_GU1),'') DEVICE_NM1,
+			IFNULL(DEVICE_GU2,'') DEVICE_GU2,
+			IFNULL((SELECT CODE_NAME FROM T_CODEBOOK 
+				WHERE PARENT_TYPE = 'SYS001' AND PARENT_ID = A.DEVICE_GU1 
+				AND CODE_TYPE = 'SYS002' AND CODE_ID = A.DEVICE_GU2),'') DEVICE_NM2,
+			IFNULL(DEVICE_LOCAL,'') DEVICE_LOCAL,
+			IFNULL((SELECT CODE_NAME FROM T_CODEBOOK WHERE CODE_TYPE = 'SYS003' AND CODE_ID = A.DEVICE_LOCAL),'') DEVICE_LOCAL_NM
+		FROM T_DEVICE A
+		WHERE USE_YN = 'Y'
+	</select>
+	
+	<!-- [Cache Fix] T_DEVICE INNER JOIN 제거 -->
+	<select id="sysmon_get_config_hwusage_list" parameterType="map" resultType="map">
+		SELECT  
+			A.DEVICE_ID,  
+			A.ALARM_CNT,
+			A.ALARM_SKIP_CNT, 
+			A.SMS_YN, 
+			ITEM_NM, 
+			CASE 
+				WHEN ALARM_GIJUN = '1' THEN GIJUN1 
+				WHEN ALARM_GIJUN = '2' THEN GIJUN2 
+				WHEN ALARM_GIJUN = '3' THEN GIJUN3 
+			END ALARM_THRESHOLD_VALUE,
+			ALARM_GIJUN,
+			INTERVL, 
+			FROM_TIME, 
+			TO_TIME 
+		FROM T_HW_GIJUN A 
+		WHERE A.USE_YN = 'Y'
+	</select>
+	
+	<!-- [Cache Fix] T_DEVICE INNER JOIN 제거 -->
+	<select id="sysmon_get_config_disk_list" parameterType="map" resultType="map">
+		SELECT  
+			A.DEVICE_ID,  
+			A.ALARM_CNT, 
+			A.ALARM_SKIP_CNT,
+			A.SMS_YN, 
+			PARTI_NM, 
+			CASE 
+				WHEN ALARM_GIJUN = '1' THEN GIJUN1 
+				WHEN ALARM_GIJUN = '2' THEN GIJUN2 
+				WHEN ALARM_GIJUN = '3' THEN GIJUN3 
+			END ALARM_THRESHOLD_VALUE,
+			ALARM_GIJUN,
+			INTERVL, 
+			FROM_TIME, 
+			TO_TIME 
+		FROM T_DISK_GIJUN A
+		WHERE A.USE_YN = 'Y'
+	</select>
+	
+	<insert id="sql_insert_disk_config" parameterType="map">
+		INSERT INTO T_DISK_GIJUN (DEVICE_ID, PARTI_NM, GIJUN1, GIJUN2, GIJUN3, ALARM_GIJUN, INTERVL)
+		VALUES (#{device_id}, #{parti_nm}, '85', '90', '95', '1', '10')
+		ON DUPLICATE KEY 
+		UPDATE 
+		INTERVL = '10'
+	</insert>
+
+	<!-- [Cache Fix] T_DEVICE INNER JOIN 제거 -->
+	<select id="sql_get_config_log_list" parameterType="map" resultType="map">
+		SELECT  
+			A.DEVICE_ID,  
+			A.SMS_YN, 
+			LOG_NM, 
+			ALARM_GIJUN,
+			INTERVL, 
+			FROM_TIME, 
+			TO_TIME,
+			ALARM_CNT,
+			ALARM_SKIP_CNT,
+			P.PATH_ID,
+			P.PATH,
+			AG.ERROR_DETAIL
+		FROM T_LOG_GIJUN A LEFT OUTER JOIN T_LOG_GIJUN_PATH P ON A.DEVICE_ID = P.DEVICE_ID AND A.PATH_ID = P.PATH_ID
+		  LEFT OUTER JOIN T_ACTION_GUIDE AG ON A.LOG_NM = AG.ERROR_MSG
+		WHERE A.USE_YN = 'Y'
+	</select>
+	
+	<!-- [Cache Fix] T_DEVICE INNER JOIN 제거 -->
+	<select id="sql_get_config_process_list" parameterType="map" resultType="map">
+		SELECT  
+			A.DEVICE_ID,  
+			A.SMS_YN, 
+			PROCESS_NM, 
+			ALARM_GIJUN,
+			INTERVL, 
+			FROM_TIME, 
+			TO_TIME,
+			ALARM_CNT,
+			ALARM_SKIP_CNT,
+			GIJUN1 THRESHOLD_CNT,
+			GIJUN2 THRESHOLD_MEMORY
+		FROM T_PROCESS_GIJUN A 
+		WHERE A.USE_YN = 'Y'
+	</select>
+	
+	<update id="sql_snmp_useyn_update" parameterType="map">
+		UPDATE T_DEVICE
+		SET SNMP_YN = 'N'
+		WHERE DEVICE_ID = #{device_id}
+	</update>
+	
+	<insert id="sql_insert_agent_log_save" parameterType="map">
+		insert into t_sysmon_log_parsing
+		(reg_date, cpu, memory, swap, disk1_name, disk1_value, disk2_name, disk2_value, disk3_name, disk3_value)
+		values (str_to_date(#{current_time},'%Y-%m-%d %H:%i:%s'), #{cpu}, #{rmem}, #{smem}, 
+			#{disk1_name}, #{disk1_value}, #{disk2_name}, #{disk2_value}, #{disk3_name}, #{disk3_value})
+	</insert>
+	
+	<insert id="sql_insert_stat_batch" parameterType="map">
+		INSERT INTO t_sysmon_stat (cpu, device_id, memory, swap, reg_date, device_ip)
+		VALUES (#{CPULOAD}, #{id}, #{MEMORY}, #{SWAP}, str_to_date(#{current_time},'%Y%m%d%H%i%s'), #{ip}) -- MySQL 함수 (오라클일경우 수정) 
+	</insert>
+	
+	<insert id="sql_insert_stat_single" parameterType="map">
+		INSERT INTO t_sysmon_stat (cpu, device_id, memory, swap, reg_date, device_ip)
+		VALUES (#{cpu}, #{deviceid}, #{rmem}, #{smem}, str_to_date(#{current_time},'%Y%m%d%H%i%s'), #{deviceip}) -- MySQL 함수 (오라클일경우 수정) 
+	</insert>
+
+	<insert id="sql_merge_state_disk_batch" parameterType="map">
+		INSERT INTO t_sysmon_state_disk
+			(device_id, parti_nm, used_percent, upd_date)
+		VALUES (#{device_id}, #{parti_nm}, #{used_percent1}, NOW())
+		ON DUPLICATE KEY 
+		UPDATE 
+			used_percent = #{used_percent2}, upd_date = now()
+	</insert>
+	
+	<insert id="sql_insert_alarm_msg" parameterType="map">
+		INSERT INTO T_ALARM_MSG (
+			DEVICE_ID, DEVICE_IP, MSG1, ETC1, LAST_UPDATED,
+			DEVICE_GU1, DEVICE_NM1, DEVICE_GU2, DEVICE_NM2, DEVICE_LOCAL,
+			DEVICE_LOCAL_NM, UUID
+		) 
+		SELECT 
+			#{DEVICE_ID}, #{DEVICE_IP}, #{MSG1}, #{ETC1}, now(),  -- MySQL 함수 (오라클일경우 수정)
+			#{DEVICE_GU1}, #{DEVICE_NM1}, #{DEVICE_GU2}, #{DEVICE_NM2}, #{DEVICE_LOCAL},
+			#{DEVICE_LOCAL_NM}, #{UUID}
+
+	</insert>
+	
+	<update id="sql_update_alarm_msg" parameterType="map">
+		UPDATE T_ALARM_MSG
+		SET
+			SEND_YN = 'Y',
+			SMS_SEND_DATE = now(),
+			LAST_UPDATED = now()
+		WHERE UUID = #{UUID}
+	</update>
+	
+	<select id="sql_get_admin_info" parameterType="map" resultType="map">
+		SELECT
+			B.ADMIN_ID,
+			A.DEVICE_ID,
+			B.HP,
+			B.ALARM_GRADE
+		FROM T_ADMIN_DEVICE A LEFT OUTER JOIN T_ADMIN B 
+			ON A.ADMIN_ID = B.ADMIN_ID
+			, T_DEVICE C
+		WHERE B.USE_YN = 'Y'
+			AND A.DEVICE_ID = C.DEVICE_ID
+			AND C.USE_YN = 'Y'
+			AND C.ALARM_YN = 'Y'
+			AND A.DEVICE_ID = #{DEVICE_ID}
+	</select>
+	
+	<insert id="sql_insert_sms" parameterType="map">
+		INSERT INTO T_ALARM_SMS (HP, MSG, SEND_DATE)
+		VALUES (#{HP}, #{MSG}, now())
+	</insert>
+	
+	<select id="sql_pivot_test_01" parameterType="map" resultType="map">
+		select
+			date_format(reg_date, '%Y%m%d%H') reg_hour,
+			device_id,
+			round(cpu,2) cpu,
+			round(memory,2) memory,
+			round(swap,2) swap
+		from t_sysmon_stat order by reg_date desc limit 10000
+	</select>
+  
+	<select id="sql_action_guide" parameterType="map" resultType="map">
+		SELECT
+			DEVICE_CODE,
+			ERROR_MSG,
+			ERROR_NOTI
+		FROM t_action_guide
+		WHERE DEVICE_CODE IN ('01','04') -- PBX, CTI
+	</select>
+	
+	<select id="sql_get_trap_config" parameterType="map" resultType="map">
+		SELECT
+			DEVICE_GU,
+			DEVICE_SEQ,
+			IFNULL(B.DEVICE_ID, '') DEVICE_ID,
+			IFNULL(B.DEVICE_IP, '') DEVICE_IP,
+			ALARM_MSG1,
+			ALARM_MSG2,
+			ALARM_MSG3,
+			ETC1,
+			ALARM_GRADE,
+			SMS_YN,
+			A.ALARM_YN,
+			INTERVL,
+			FROM_TIME,
+			TO_TIME,
+			SPECIFIC_ID,
+			ENTERPRISE_ID,
+			(MSG1_CNT + MSG2_CNT + MSG3_CNT) MSG_CNT
+		FROM (
+			SELECT
+				DEVICE_GU,
+				DEVICE_SEQ,
+				IFNULL(ALARM_MSG1,'') ALARM_MSG1,
+				IFNULL(ALARM_MSG2,'') ALARM_MSG2,
+				IFNULL(ALARM_MSG3,'') ALARM_MSG3,
+				REPLACE(IFNULL(ETC1,''),'null','') ETC1,
+				ALARM_GRADE,
+				SMS_YN,
+				ALARM_YN,
+				INTERVL,
+				IFNULL(FROM_TIME,'0000') FROM_TIME,
+				IFNULL(TO_TIME,'0000') TO_TIME,
+				IFNULL(SPECIFIC_ID,'') SPECIFIC_ID,
+				IFNULL(ENTERPRISE_ID,'') ENTERPRISE_ID,
+				CASE WHEN ALARM_MSG1 IS NULL OR ALARM_MSG1 = '' THEN 0 ELSE 1 END MSG1_CNT,
+				CASE WHEN ALARM_MSG2 IS NULL OR ALARM_MSG2 = '' THEN 0 ELSE 1 END MSG2_CNT,
+				CASE WHEN ALARM_MSG3 IS NULL OR ALARM_MSG3 = '' THEN 0 ELSE 1 END MSG3_CNT
+			FROM T_ALARM_INFO
+			WHERE USE_YN = 'Y'
+		) A LEFT OUTER JOIN T_DEVICE B ON A.DEVICE_GU = B.DEVICE_GU1
+		ORDER BY DEVICE_GU, MSG_CNT DESC, ALARM_MSG1, ALARM_MSG2, ALARM_MSG3
+	</select>
+
+</mapper>
